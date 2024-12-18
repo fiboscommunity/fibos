@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@tpblock/client": "^0.24.3",
+    "solc": "0.8.20"
+  },
+  "name": "test",
+  "version": "1.0.0"
+}

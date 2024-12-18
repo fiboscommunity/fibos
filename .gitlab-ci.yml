@@ -1,0 +1,134 @@
+stages:
+  - build
+  - test
+  - upload
+  - release
+
+variables:
+  UBUNTU_BUILD_DIR: "bin/Linux_x64_release"
+  LOONG64_BUILD_DIR: "bin/Linux_loong64_release"
+  DARWIN_BUILD_DIR: "bin/Darwin_x64_release"
+  BIN_NAME: "fibos"
+  INSTALLER_NAME: "installer.sh"
+  UBUNTU_PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/ubuntu_package/$CI_COMMIT_TAG"
+  LOONG64_PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/loong64_package/$CI_COMMIT_TAG"
+  DARWIN_PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/darwin_package/$CI_COMMIT_TAG"
+
+build:linux:
+  stage: build
+  image: tpblock/fibos_builder:v1.0
+  script:
+    - ./build -j6
+  artifacts:
+    paths:
+      - ${UBUNTU_BUILD_DIR}/${BIN_NAME}
+      - ${UBUNTU_BUILD_DIR}/${INSTALLER_NAME}
+    expire_in: 6 hours
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+  tags:
+    - ChainShell
+
+build:macos:
+  stage: build
+  script:
+    - ./build -j6
+  artifacts:
+    paths:
+      - ${DARWIN_BUILD_DIR}/${BIN_NAME}
+      - ${DARWIN_BUILD_DIR}/${INSTALLER_NAME}
+    expire_in: 6 hours
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+  tags:
+    - MacShell
+
+test:ubuntu22.04:
+  stage: test
+  image: ubuntu:22.04
+  script:
+    - ${UBUNTU_BUILD_DIR}/${BIN_NAME} --install --target test
+    - ${UBUNTU_BUILD_DIR}/${BIN_NAME} test
+  tags:
+    - ChainShellDocker
+  needs: ["build:linux"]
+
+test:ubuntu20.04:
+  stage: test
+  image: ubuntu:20.04
+  script:
+    - ${UBUNTU_BUILD_DIR}/${BIN_NAME} --install --target test
+    - ${UBUNTU_BUILD_DIR}/${BIN_NAME} test
+  tags:
+    - ChainShellDocker
+  needs: ["build:linux"]
+
+test:ubuntu18.04:
+  stage: test
+  image: ubuntu:18.04
+  script:
+    - ${UBUNTU_BUILD_DIR}/${BIN_NAME} --install --target test
+    - ${UBUNTU_BUILD_DIR}/${BIN_NAME} test
+  tags:
+    - ChainShellDocker
+  needs: ["build:linux"]
+
+test:ubuntu10.04:
+  stage: test
+  image: ubuntu:10.04
+  script:
+    - ${UBUNTU_BUILD_DIR}/${BIN_NAME} --install --target test
+    - ${UBUNTU_BUILD_DIR}/${BIN_NAME} test
+  tags:
+    - ChainShellDocker
+  needs: ["build:linux"]
+
+test:centos7:
+  stage: test
+  image: centos:centos7
+  script:
+    - ${UBUNTU_BUILD_DIR}/${BIN_NAME} --install --target test
+    - ${UBUNTU_BUILD_DIR}/${BIN_NAME} test
+  tags:
+    - ChainShellDocker
+  needs: ["build:linux"]
+
+test:macos:
+  stage: test
+  script: 
+    - ${DARWIN_BUILD_DIR}/${BIN_NAME} --install --target test
+    - ${DARWIN_BUILD_DIR}/${BIN_NAME} test
+  tags:
+    - MacShell
+  needs: ["build:macos"]
+
+upload:
+  stage: upload
+  image: curlimages/curl:latest
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - |
+      curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file ${UBUNTU_BUILD_DIR}/${BIN_NAME} "${UBUNTU_PACKAGE_REGISTRY_URL}/${BIN_NAME}"
+    - |
+      curl --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file ${UBUNTU_BUILD_DIR}/${INSTALLER_NAME} "${UBUNTU_PACKAGE_REGISTRY_URL}/${INSTALLER_NAME}"
+  tags:
+    - ChainShellDocker
+  needs:
+    ["test:ubuntu18.04", "test:ubuntu20.04", "test:ubuntu10.04", "test:centos7"]
+
+release:
+  # Caution, as of 2021-02-02 these assets links require a login, see:
+  # https://gitlab.com/gitlab-org/gitlab/-/issues/299384
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - |
+      release-cli create --name "Release $CI_COMMIT_TAG" --tag-name $CI_COMMIT_TAG \
+        --assets-link "{\"name\":\"${BIN_NAME}\",\"url\":\"${UBUNTU_PACKAGE_REGISTRY_URL}/${BIN_NAME}\"}" \
+        --assets-link "{\"name\":\"${INSTALLER_NAME}\",\"url\":\"${UBUNTU_PACKAGE_REGISTRY_URL}/${INSTALLER_NAME}\"}"
+  tags:
+    - ChainShellDocker
+  needs: ["upload"]

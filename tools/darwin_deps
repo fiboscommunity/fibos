@@ -1,0 +1,8 @@
+cmake,bin/cmake
+ccache,bin/ccache
+git,bin/git
+llvm@13,opt/llvm@13
+texinfo,opt/texinfo
+gmp,include/gmp.h
+zstd,include/zstd.h
+pkgconfig,bin/pkg-config

@@ -1,0 +1,11 @@
+/out
+/bin
+/vender/gmp/build
+/temp
+/docs
+*.sdf
+*.suo
+node_modules
+data/
+.DS_Store
+.vscode

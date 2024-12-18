@@ -1,0 +1,13 @@
+clang-13,dpkg -s
+make,dpkg -s
+cmake,dpkg -s
+ccache,dpkg -s
+libx11-dev,dpkg -s
+git,dpkg -s
+m4,dpkg -s
+texinfo,dpkg -s
+libstdc++-10-dev,dpkg -s
+libcurl4-openssl-dev,dpkg -s
+libgmp-dev,dpkg -s
+pkg-config,dpkg -s
+zlib1g-dev,dpkg -s

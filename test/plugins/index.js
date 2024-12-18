@@ -1,0 +1,3 @@
+describe("plugins", () => {
+    run('./post');
+});

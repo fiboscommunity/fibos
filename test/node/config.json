@@ -1,0 +1,9 @@
+{
+    "node_dir": "./data",
+    "http_port": "8870",
+    "p2p_port": "9801",
+    "p2p_peer_addres": ["127.0.0.1:9811"],
+    "contracts_console": true,
+    "delete_all_blocks": true,
+    "genesis_json": "./genesis.json"
+}

@@ -1,0 +1,23 @@
+{
+    "node_dir": "./data",
+    "http_port": "8870",
+    "p2p_port": "9801",
+    "p2p_peer_addres": [
+        "127.0.0.1:9811"
+    ],
+    "contracts_console": true,
+    "delete_all_blocks": true,
+    "genesis_json": "./genesis.json",
+    "producer": [
+        {
+            "producer_name": "testnetbppa1",
+            "pub_key": "PUB7ZZ5MJc5smZvKmWFC8nJcjnTpWqsGVZpJCCp1comaKon1vuS4C",
+            "pri_key": "5Jwx5YGVhJ7v32ce6yt6mMjCL9MDXD7WHGz6BW6XQBKvXLibwsK"
+        },
+        {
+            "producer_name": "eth2eosgtw",
+            "pub_key": "PUB6VJzvUDsWDWiqxe81gQvVv3qNgfnWSnZ5cEddBdB2NK3sCC12z",
+            "pri_key": "5KCVSmV4ePVTJdPLEweRdXWcmXxmpNWtA1Exkzar5zXBJTFECU5"
+        }
+    ]
+}

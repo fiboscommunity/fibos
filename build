@@ -1,0 +1,313 @@
+##!/bin/bash
+
+. ./tools/inst_deps.sh
+
+FIBOS_PATH=$(pwd)
+
+args=$@
+
+for i in $@; do
+	case $i in
+	linux)
+		BUILD_OS=$i
+		args="${args/$BUILD_OS/}"
+		;;
+	esac
+done
+
+if [[ $BUILD_OS ]]; then
+	DOCKER_DETECT=$(docker image ls fibos)
+	if [[ !(${DOCKER_DETECT} =~ "fibos") ]]; then
+		echo "build docker image...."
+		docker build --rm -t fibos docker
+	fi
+
+	docker run -ti --rm -v ${FIBOS_PATH}:${FIBOS_PATH} fibos bash -c "cd ${FIBOS_PATH}; usermod --login ${USER} fibos; sudo -u ${USER} bash build ${args}"
+	exit $?
+fi
+
+usage() {
+	echo ""
+	echo "Usage: $(basename $0) [options] [-jn] [-v] [-h]"
+	echo "Options:"
+	echo "  release, debug: "
+	echo "      Specifies the build type."
+	echo "  clean: "
+	echo "      Clean the build folder."
+	echo "  -h, --help:"
+	echo "      Print this message and exit."
+	echo "  -v: verbose make"
+	echo ""
+	exit 0
+}
+
+TIME_BEGIN=$(date +%s)
+HOST_OS=$(uname)
+HOST_ARCH=$(uname -m)
+
+case ${HOST_ARCH} in
+i386 | i686)
+	HOST_ARCH="i386"
+	;;
+x86_64 | amd64)
+	HOST_ARCH="x64"
+	;;
+armv6 | armv7 | armv7s | armv7l)
+	HOST_ARCH="arm"
+	;;
+aarch64)
+	HOST_ARCH="arm64"
+	;;
+mips | mipsel)
+	HOST_ARCH="mips"
+	;;
+mips64)
+	HOST_ARCH="mips64"
+	;;
+powerpc)
+	HOST_ARCH="ppc"
+	;;
+ppc64)
+	HOST_ARCH="ppc64"
+	;;
+loongarch64)
+	HOST_ARCH="loong64"
+	;;
+esac
+
+TARGET_OS=$HOST_OS
+TARGET_ARCH=$HOST_ARCH
+BUILD_TYPE="release"
+
+BUILD_JOBS=4
+for i in "$@"; do
+	case $i in
+	release | debug | clean)
+		BUILD_TYPE=$i
+		;;
+	ci)
+		CI="ci"
+		;;
+	-j*)
+		ENABLE_JOBS=1
+		BUILD_JOBS="${i#-j}"
+		;;
+	-v)
+		BUILD_VERBOSE='VERBOSE=1'
+		;;
+	--help | -h)
+		usage
+		;;
+	*)
+		echo "illegal option $i"
+		usage
+		;;
+	esac
+done
+
+if [ "$ENABLE_JOBS" = "1" -a "$BUILD_JOBS" = "" ]; then
+	BUILD_JOBS=4
+fi
+
+if [ ${BUILD_TYPE} = 'release' ]; then
+	CMAKE_BUILD_TYPE="Release"
+fi
+
+if [ ${BUILD_TYPE} = 'debug' ]; then
+	CMAKE_BUILD_TYPE="Debug"
+fi
+
+# ==================== create folder ==========================
+
+OUT_PATH=${FIBOS_PATH}/out
+WORK_PATH=${OUT_PATH}/${TARGET_OS}_${TARGET_ARCH}_${BUILD_TYPE}/fibos
+BIN_ROOT=${FIBOS_PATH}/bin
+BIN_PATH=${BIN_ROOT}/${TARGET_OS}_${TARGET_ARCH}_${BUILD_TYPE}
+
+EOS_BUILD=${FIBOS_PATH}/vender/eos/build
+
+GMP_SRC=${FIBOS_PATH}/vender/gmp
+GMP_OUT=${GMP_SRC}/build
+GMP_PATH=${GMP_OUT}/${TARGET_OS}_${BUILD_TYPE}
+
+if [ ${BUILD_TYPE} = 'clean' ]; then
+	rm -rf vender/fibjs/out
+	rm -rf vender/fibjs/bin
+	rm -rf ${EOS_BUILD}
+	rm -rf ${GMP_OUT}
+	rm -rf ${OUT_PATH}
+	rm -rf ${BIN_ROOT}
+
+	exit 0
+fi
+
+if [ ! -e "${OUT_PATH}" ]; then
+	mkdir "${OUT_PATH}"
+fi
+
+if [ ! -e "${OUT_PATH}/${TARGET_OS}_${TARGET_ARCH}_${BUILD_TYPE}" ]; then
+	mkdir "${OUT_PATH}/${TARGET_OS}_${TARGET_ARCH}_${BUILD_TYPE}"
+fi
+
+if [ ! -e "${WORK_PATH}" ]; then
+	mkdir "${WORK_PATH}"
+fi
+
+TEMP_DIR=${OUT_PATH}
+if [ ! -e "${TEMP_DIR}" ]; then
+	mkdir "${TEMP_DIR}"
+fi
+
+if [[ $OS == "Darwin" ]]; then
+	ensure_brew_packages "${FIBOS_PATH}/tools/darwin_deps"
+elif [[ $OS == "Linux" ]]; then
+	if [[ $NAME =~ "Ubuntu" ]]; then
+		ensure_apt_packages "${FIBOS_PATH}/tools/ubuntu_deps"
+	fi
+fi
+
+export HUNTER_ROOT=${OUT_PATH}/.hunter
+
+# ==================== change to llvm ==========================
+
+if [ "${HOST_OS}" = 'Darwin' ]; then
+	LLVM_ROOT=$(brew --prefix llvm@13)
+	export CC=${LLVM_ROOT}/bin/clang
+	export CXX=${LLVM_ROOT}/bin/clang++
+	export LLVM_LIBS=${LLVM_ROOT}/lib
+else
+	export CC=/usr/bin/clang-13
+	export CXX=/usr/bin/clang++-13
+fi
+
+# ==================== build eos ==========================
+printf "\\n\\tBuilding eos\\n\\n"
+
+export CPU_CORE=${BUILD_JOBS}
+
+cd vender/eos
+git submodule update --init --recursive
+
+cmake -S . -B ${EOS_BUILD}/${TARGET_OS}_${BUILD_TYPE} -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+	-DBOOST_CONTEXT_IMPLEMENTATION=ucontext -DOPENSSL_NO_ASM=1 -DCMAKE_C_FLAGS=-D__MIPSEL__ \
+	-DENABLE_OC=off -DENABLE_SOFTFLOAT=off -DCMAKE_CXX_FLAGS="-include ${FIBOS_PATH}/include/config.hpp -D__MIPSEL__"
+
+if [ $? != 0 ]; then
+	exit 1
+fi
+
+cd ${EOS_BUILD}/${TARGET_OS}_${BUILD_TYPE}
+make nodeos -j${BUILD_JOBS}
+if [ $? != 0 ]; then
+	exit 1
+fi
+
+cd ${FIBOS_PATH}
+
+cd "${FIBOS_PATH}"
+
+# ==================== build gmp ==========================
+printf "\\n\\tBuilding gmp library\\n\\n"
+
+cd vender/gmp
+if [ ! -e "${GMP_OUT}" ]; then
+	mkdir "${GMP_OUT}"
+fi
+
+if [ ! -e "${GMP_PATH}/Makefile" ]; then
+	if [ ! -e "${GMP_PATH}" ]; then
+		mkdir "${GMP_PATH}"
+	fi
+
+	cd "${GMP_PATH}"
+
+	if [ ${BUILD_TYPE} = 'debug' ]; then
+		../../configure --enable-shared=no --disable-assembly CFLAGS=-g
+	else
+		../../configure --enable-shared=no --disable-assembly
+	fi
+else
+	cd "${GMP_PATH}"
+fi
+
+make -j${BUILD_JOBS}
+if [ $? != 0 ]; then
+	exit 1
+fi
+
+cd "${FIBOS_PATH}"
+
+# ==================== build fibjs ==========================
+printf "\\n\\tBuilding fibjs\\n\\n"
+
+cd vender/fibjs
+git submodule update --init --recursive
+bash build ${BUILD_TYPE} -j${BUILD_JOBS}
+if [ $? != 0 ]; then
+	exit 1
+fi
+
+cd "${FIBOS_PATH}"
+
+# ==================== build fibos ==========================
+printf "\\n\\tBuilding fibos\\n\\n"
+
+GIT_INFO=$(git describe --always)
+cd ${WORK_PATH}
+cmake -S ${FIBOS_PATH} -Wno-dev -DBUILD_TYPE=${BUILD_TYPE} -DGIT_INFO=$GIT_INFO >CMake.log
+if [ $? != 0 ]; then
+	exit 1
+fi
+
+make -j${BUILD_JOBS}
+if [ $? != 0 ]; then
+	exit 1
+fi
+
+# ==================== build installer ==========================
+if [ "${BUILD_TYPE}" = "release" ]; then
+	cd "${BIN_PATH}"
+	cp "${FIBOS_PATH}/installer.txt" "installer.sh"
+	tar -zcf fibos.tar.gz fibos
+	echo '[100%] Built target fibos.tar.gz'
+	cat fibos.tar.gz >>installer.sh
+	chmod 777 installer.sh
+	echo '[100%] Built target install.sh'
+
+	if [ $TARGET_OS = "Linux" ]; then
+		echo ''
+		echo '==== GLIBC ===='
+		objdump fibos -p | grep GLIBC_[0-9.]* -o | sort | uniq
+	elif [ $TARGET_OS = "Darwin" ]; then
+		otool -L fibos
+	fi
+
+	if [ "${CI}" = "ci" ]; then
+		xz -cz -T2 fibos >fibos.xz
+		echo '[100%] Built target fibos.xz'
+	fi
+fi
+
+cd "${FIBOS_PATH}"
+
+txtbld=$(tput bold)
+bldred=${txtbld}$(tput setaf 1)
+txtrst=$(tput sgr0)
+
+printf "\n\n${bldred}"
+printf "\t _______ _________ ______   _______  _______\n"
+printf "\t(  ____ \\\\\\__   __/(  ___ \\ (  ___  )(  ____ \\\\\n"
+printf "\t| (    \\/   ) (   | (   ) )| (   ) || (    \\/\n"
+printf "\t| (__       | |   | (__/ / | |   | || (_____ \n"
+printf "\t|  __)      | |   |  __ (  | |   | |(_____  )\n"
+printf "\t| (         | |   | (  \\ \\ | |   | |      ) |\n"
+printf "\t| (_     ___) (___| (___) )| (___) |/\\____) |\n"
+printf "\t(__/     \\_______/(______/ (_______)\\_______)\n"
+printf "${txtrst}"
+printf ""
+TIME_END=$(($(date -u +%s) - $TIME_BEGIN))
+
+printf "\\n\\tFIBOS has been successfully built during  $(($TIME_END / 3600)):$(($TIME_END % 3600 / 60)):$(($TIME_END % 60))\\n\\n"
+
+printf "\\tFor more information:\\n\\n"
+printf "\\tFIBOS website: http://fibos.io\\n"

@@ -1,0 +1,6 @@
+[submodule "fibjs"]
+	path = vender/fibjs
+	url = https://github.com/fibjs/fibjs.git
+[submodule "eos"]
+	path = vender/eos
+	url = https://github.com/AntelopeIO/leap.git
