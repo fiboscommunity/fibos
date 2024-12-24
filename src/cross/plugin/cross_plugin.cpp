@@ -285,9 +285,11 @@ public:
     {
         try {
             _timer.expires_from_now(boost::posix_time::seconds(1));
-            app().executor().post(priority::lowest, exec_queue::read_only, [&]() {
+            _timer.async_wait(app().executor().wrap(priority::low, exec_queue::read_write, [=](const boost::system::error_code& ec) {
+                if (ec)
+                    elog("error occur when execute handle_action_loop, the error is ${error}", ("error", ec.value()));
                 handle_action_loop();
-            });
+            }));
 
             if (!init_check) {
                 if (do_init_check())
