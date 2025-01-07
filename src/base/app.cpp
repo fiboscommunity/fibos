@@ -29,6 +29,8 @@
 #include <eosio/version/version.hpp>
 #include <chainbase/pinnable_mapped_file.hpp>
 #include <chainbase/environment.hpp>
+#include <eosio/wallet_api_plugin/wallet_api_plugin.hpp>
+#include <eosio/wallet_plugin/wallet_plugin.hpp>
 
 #include <fc/log/logger_config.hpp>
 #include <fc/log/appender.hpp>
@@ -128,6 +130,8 @@ void init_chain()
     app()._register_plugin<producer_api_plugin>();
     app()._register_plugin<producer_plugin>();
 
+    app()._register_plugin<wallet_api_plugin>();
+    app()._register_plugin<wallet_plugin>();
     app()._register_plugin<resource_monitor_plugin>();
     app()._register_plugin<trace_api_plugin>();
     app()._register_plugin<emitter_plugin>();
@@ -271,7 +275,6 @@ static void chain_main()
     Isolate* main_isolate = Isolate::main();
     Isolate* isolate = js_module_interface::g_isolate;
 
-    ilog("<=================0================>");
     Runtime rt(isolate);
     v8::Locker locker(isolate->m_isolate);
     v8::Isolate::Scope isolate_scope(isolate->m_isolate);

@@ -171,7 +171,7 @@ export HUNTER_ROOT=${OUT_PATH}/.hunter
 # ==================== change to llvm ==========================
 
 if [ "${HOST_OS}" = 'Darwin' ]; then
-	LLVM_ROOT=$(brew --prefix llvm@13)
+	LLVM_ROOT=$(brew --prefix llvm@16)
 	export CC=${LLVM_ROOT}/bin/clang
 	export CXX=${LLVM_ROOT}/bin/clang++
 	export LLVM_LIBS=${LLVM_ROOT}/lib
@@ -198,6 +198,7 @@ fi
 
 cd ${EOS_BUILD}/${TARGET_OS}_${BUILD_TYPE}
 make nodeos -j${BUILD_JOBS}
+make wallet_api_plugin -j${BUILD_JOBS}
 if [ $? != 0 ]; then
 	exit 1
 fi

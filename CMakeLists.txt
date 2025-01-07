@@ -131,11 +131,15 @@ foreach(lib ${libs})
 endforeach()
 
 if(${BUILD_OS} STREQUAL "Darwin")
+     find_library(localauthentication_framework LocalAuthentication)
+     find_library(corefoundation_framework CoreFoundation)
+     find_library(cocoa_framework Cocoa)
+     find_library(security_framework Security)
 	set(link_flags "${link_flags} -nostdlib")
 	target_link_libraries(${name}
 		${LIBC_DIR}/libc++.a
 		${LIBC_DIR}/libc++abi.a
-		${LIBC_DIR}/libunwind.a)
+		${LIBC_DIR}/libunwind.a ${localauthentication_framework} ${corefoundation_framework} ${cocoa_framework} ${security_framework})
 else()
 	set(link_flags "${link_flags} -rdynamic")
 endif()
