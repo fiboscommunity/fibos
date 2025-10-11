@@ -475,11 +475,12 @@ result_t chain_base::stop()
     return 0;
 }
 
-result_t chain_base::is_dirty()
+result_t chain_base::is_dirty(bool& retVal)
 {
     exlib::string data_dir = app().data_dir().c_str();
     data_dir.append("/state/shared_memory.bin");
     if (!fs::exists(data_dir.c_str())) {
+        retVal = false;
         return 0;
     }
     char header[chainbase::header_size];
@@ -488,7 +489,8 @@ result_t chain_base::is_dirty()
     if (hs.fail()) {
         elog("bad header");
         hs.close();
-        return 1;
+        retVal = true;
+        return 0;
     }
     chainbase::db_header* dbheader = reinterpret_cast<chainbase::db_header*>(header);
     if (dbheader) {
@@ -496,22 +498,26 @@ result_t chain_base::is_dirty()
             data_dir.append(" database format not compatible with this version of chainbase.");
             elog(data_dir.c_str());
             hs.close();
-            return 1;
+            retVal = true;
+            return 0;
         }
         if (dbheader->dirty) {
             data_dir.append(" database dirty flag set");
             elog(data_dir.c_str());
             hs.close();
-            return 1;
+            retVal = true;
+            return 0;
         }
         if (dbheader->dbenviron != chainbase::environment()) {
             data_dir.append(" database was created with a chainbase from a different environment");
             elog(data_dir.c_str());
             hs.close();
-            return 1;
+            retVal = true;
+            return 0;
         }
     }
     hs.close();
+    retVal = false;
     return 0;
 }
 

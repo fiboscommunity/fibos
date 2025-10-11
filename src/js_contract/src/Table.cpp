@@ -115,6 +115,12 @@ v8::Intercepted get_table(v8::Local<v8::Name> property, const v8::PropertyCallba
 {
     if (js_module_interface::g_module != NULL) {
         v8::String::Utf8Value str(js_module_interface::g_isolate->m_isolate, property);
+        
+        if (!qstrcmp(*str, "state")) {
+            js_module_interface::g_module->load_state();
+            info.GetReturnValue().Set(js_module_interface::g_module->m_state.Get(js_module_interface::g_isolate->m_isolate));
+            return v8::Intercepted::kYes;
+        }
 
         for (int32_t i = 0; i < (int32_t)js_module_interface::g_module->m_abi.tables.size(); i++) {
             exlib::string name = js_module_interface::g_module->m_abi.tables[i].name.to_string();
@@ -123,7 +129,7 @@ v8::Intercepted get_table(v8::Local<v8::Name> property, const v8::PropertyCallba
                 obj_ptr<TableFactory> tf = new TableFactory(name, js_module_interface::g_module->m_abi.tables[i]);
 
                 info.GetReturnValue().Set(js_module_interface::g_isolate->NewFunction(name.c_str(), TableFactory::get_table, tf->wrap()));
-                return v8::Intercepted::kYes;;
+                return v8::Intercepted::kYes;
             }
         }
     }
@@ -135,7 +141,11 @@ v8::Intercepted set_table(v8::Local<v8::Name> property, v8::Local<v8::Value> val
 {
     v8::String::Utf8Value str(js_module_interface::g_isolate->m_isolate, property);
 
-    if (qstrcmp(*str, "Table") && qstrcmp(*str, "DBIterator"))
+    if (!qstrcmp(*str, "state")) {
+        if (value->IsObject())
+            js_module_interface::g_module->m_state.Reset(js_module_interface::g_isolate->m_isolate, v8::Local<v8::Object>::Cast(value));
+        return v8::Intercepted::kYes;
+    } else if (qstrcmp(*str, "Table") && qstrcmp(*str, "DBIterator"))
         return v8::Intercepted::kYes;
     return v8::Intercepted::kNo;
 }

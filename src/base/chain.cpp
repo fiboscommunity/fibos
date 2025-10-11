@@ -50,7 +50,11 @@ int32_t main(int32_t argc, char* argv[])
 
     v8::internal::v8_flags.icu_timezone_data = false;
 
-    fibjs::start(argc, argv, fibjs::FiberProcJsEntry, Platform::platform_creator);
+    fibjs::start(argc, argv, [](fibjs::Isolate* isolate) -> fibjs::result_t {
+        fibjs::init_chain();
+        return fibjs::FiberProcJsEntry(isolate);
+    }, Platform::platform_creator);
+    
     fibjs::start_chain();
 
     return 0;

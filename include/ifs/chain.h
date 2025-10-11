@@ -33,7 +33,7 @@ public:
     static result_t load(v8::Local<v8::Object> cfgs);
     static result_t start();
     static result_t stop();
-    static result_t is_dirty();
+    static result_t is_dirty(bool& retVal);
     static result_t get_enableJSContract(bool& retVal);
     static result_t set_enableJSContract(bool newVal);
     static result_t post(exlib::string resource, exlib::string body, exlib::string& retVal, AsyncEvent* ac);
@@ -279,13 +279,15 @@ inline void chain_base::s_static_stop(const v8::FunctionCallbackInfo<v8::Value>&
 
 inline void chain_base::s_static_is_dirty(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
+    bool vr;
+
     METHOD_ENTER();
 
     METHOD_OVER(0, 0);
 
-    hr = is_dirty();
+    hr = is_dirty(vr);
 
-    METHOD_VOID();
+    METHOD_RETURN();
 }
 
 inline void chain_base::s_static_get_enableJSContract(const v8::FunctionCallbackInfo<v8::Value>& args)

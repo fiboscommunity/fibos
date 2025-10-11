@@ -1,8 +1,15 @@
 var fibos = require('chain');
 var path = require('path');
+const snapshot = require('./snapshot');
 
 fibos.config_dir = path.join(__dirname, "./data");
 fibos.data_dir = path.join(__dirname, "./data");
+
+let chain_config = {
+    "contracts-console": true,
+    'chain-state-db-size-mb': 8 * 1024
+    // "delete-all-blocks": true
+};
 
 fibos.load("http", {
     "http-server-address": "0.0.0.0:8871",
@@ -24,13 +31,13 @@ fibos.load("producer", {
     'max-transaction-time': 3000
 });
 
-fibos.load("chain", {
-    "delete-all-blocks": true,
-    "contracts-console": true
-});
+fibos.load("chain", chain_config);
+fibos.load("chain_api");
 
-if(fibos.is_dirty()){
-    // hard-replay-blockchain or others
-}
+snapshot(chain_config);
+
+fibos.on("close", (code) => {
+    process.exit(code);
+});
 
 fibos.start();
