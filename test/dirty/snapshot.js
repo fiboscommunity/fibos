@@ -2,7 +2,7 @@ const fibos = require('chain');
 const fs = require('fs');
 const path = require('path');
 
-const snapshot_interval = 100;
+const snapshot_interval = 7200;
 const max_snapshots = 3;
 
 // Clean up old snapshot files, keep only the latest max_snapshots files
@@ -72,9 +72,14 @@ module.exports = function (config) {
         }
     }, 1000);
 
-    if (fibos.is_dirty()) {
-        // Delete state directory
-        const statePath = path.resolve(fibos.data_dir, 'state');
+    // Check if state directory exists, if not, we need to restore from snapshot
+    const statePath = path.resolve(fibos.data_dir, 'state');
+    const stateFile = path.join(statePath, 'shared_memory.bin');
+    const needsRestore = !fs.exists(statePath) || !fs.exists(stateFile) || fibos.is_dirty();
+    
+    if (needsRestore) {
+        // Delete state directory if it exists
+        console.notice("detected missing state directory or dirty state, attempting restore from snapshot");
         try {
             if (fs.exists(statePath)) {
                 // First delete all files in the state directory

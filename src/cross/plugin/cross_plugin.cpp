@@ -17,6 +17,8 @@
 #include <fc/io/json.hpp>
 #include <boost/smart_ptr.hpp>
 #include <eosio/chain/apply_context.hpp>
+#include <boost/signals2/connection.hpp>
+#include <eosio/chain/contract_table_objects.hpp>
 #include <blst/include/blst.h>
 #include "types.h"
 #include <fc/crypto/public_key.hpp>
@@ -99,7 +101,9 @@ public:
     boost::program_options::variables_map _options;
     std::mutex epoch_mutex;
     chain_plugin* chain_plug = nullptr;
+    std::optional<boost::signals2::scoped_connection> accepted_block_connection;
     bool is_generating = false;
+    bool epoch_initialized = false;
     account_name _producer;
     public_key_type _sign_public_key;
     private_key_type _sign_private_key;
@@ -280,6 +284,37 @@ public:
             p.lower_bound = std::to_string(primary);
         } while (result.more);
     }
+    void on_accepted_block(const chain::block_state_ptr& bs)
+    {
+        // Only initialize once when receiving the first block event
+        if (epoch_initialized)
+            return;
+            
+        try {
+            // Check if epoch cache exists
+            bool cache_empty = false;
+            {
+                std::lock_guard<std::mutex> lock(epoch_mutex);
+                cache_empty = cache_vec.empty();
+            }
+
+            // If cache is empty, try to initialize from database
+            if (cache_empty) {
+                auto epoch_pair = get_db_epoch();
+                if (epoch_pair.first) {
+                    uint64_t target_epoch = epoch_pair.second + epoch_vec_size - 1;
+                    generate_epoch(target_epoch);
+                    ilog("Epoch cache initialized from database, epoch: ${epoch}", ("epoch", epoch_pair.second));
+                }
+            }
+
+            // Mark as initialized so this won't run again
+            epoch_initialized = true;
+
+        } catch (...) {
+            elog("Failed to initialize epoch cache from database");
+        }
+    }
 
     void handle_action_loop()
     {
@@ -304,14 +339,38 @@ public:
 
     std::pair<bool, uint64_t> get_db_epoch()
     {
-        auto& chain = chain_plug->chain();
-        chainbase::database& db = const_cast<chainbase::database&>(chain.db());
-        const auto& idx = db.get_index<ethash_block_number_index, by_id>();
-        if (idx.begin() == idx.end()) {
-            elog("Doesn't init epoch, can't get db");
+        try {
+            auto& chain = chain_plug->chain();
+            chainbase::database& db = const_cast<chainbase::database&>(chain.db());
+
+            // Find table_id for epochdata table
+            const auto* table_id_obj = db.find<chain::table_id_object, chain::by_code_scope_table>(
+                boost::make_tuple(chain::config::eosio_cross_name, chain::config::eosio_cross_name, "epochdata"_n));
+
+            if (!table_id_obj) {
+                return std::make_pair(false, 0);
+            }
+
+            // Find epoch row (primary_key = 0)
+            const auto* kv_obj = db.find<chain::key_value_object, chain::by_scope_primary>(
+                boost::make_tuple(table_id_obj->id, uint64_t(0)));
+
+            if (!kv_obj) {
+                return std::make_pair(false, 0);
+            }
+
+            // Deserialize epoch data
+            uint64_t epoch;
+            fc::raw::unpack(kv_obj->value.data(), kv_obj->value.size(), epoch);
+            return std::make_pair(true, epoch);
+
+        } catch (const std::exception& e) {
+            elog("Failed to read epoch from database: ${e}", ("e", e.what()));
+            return std::make_pair(false, 0);
+        } catch (...) {
+            elog("Failed to read epoch from database: unknown exception");
             return std::make_pair(false, 0);
         }
-        return std::make_pair(true, idx.begin()->epoch);
     }
 
     hash_256 genseed(uint64_t block_num)
@@ -588,7 +647,8 @@ public:
         return ((arr[pos / 8] >> pos % 8) & 0x01);
     }
 
-    void aggregateBlsKey(std::vector<std::vector<uint8_t>> keys, std::vector<uint8_t> bit_mask, const unsigned char* buf) {
+    void aggregateBlsKey(std::vector<std::vector<uint8_t>> keys, std::vector<uint8_t> bit_mask, const unsigned char* buf)
+    {
         size_t mask_size = bit_mask.size();
         blst_p1 point;
         blst_p1_affine pk;
@@ -716,27 +776,58 @@ public:
             if (epoch_pair.first)
                 generate_epoch(epoch_pair.second + epoch_vec_size - 1);
         } catch (...) {
-            elog("Get db epoch failed!");
+            elog("Failed to initialize epoch cache!");
         }
     }
 
     void start_epoch(uint64_t epoch)
     {
         uint64_t new_lower_epoch = epoch - epoch_vec_size + 1;
-        auto& chain = chain_plug->chain();
-        chainbase::database& db = const_cast<chainbase::database&>(chain.db());
 
-        const auto& idx = db.get_index<ethash_block_number_index, by_id>();
-        if (idx.begin() == idx.end()) {
-            db.create<ethash_block_number_object>([&](auto& ebn) {
-                ebn.epoch = new_lower_epoch;
-            });
-        } else {
-            if (idx.begin()->epoch != new_lower_epoch) {
-                db.modify<ethash_block_number_object>(*(idx.begin()), [&](auto& ebn) {
-                    ebn.epoch = new_lower_epoch;
+        // Save epoch directly to contract table
+        try {
+            auto& chain = chain_plug->chain();
+            chainbase::database& db = const_cast<chainbase::database&>(chain.db());
+
+            // Find or create table_id for epochdata table
+            const auto* table_id_obj = db.find<chain::table_id_object, chain::by_code_scope_table>(
+                boost::make_tuple(chain::config::eosio_cross_name, chain::config::eosio_cross_name, "epochdata"_n));
+
+            if (!table_id_obj) {
+                // Create table if it doesn't exist
+                table_id_obj = &db.create<chain::table_id_object>([&](auto& obj) {
+                    obj.code = chain::config::eosio_cross_name;
+                    obj.scope = chain::config::eosio_cross_name;
+                    obj.table = "epochdata"_n;
+                    obj.payer = chain::config::system_account_name;
                 });
             }
+
+            // Find existing epoch row (primary_key = 0)
+            const auto* kv_obj = db.find<chain::key_value_object, chain::by_scope_primary>(
+                boost::make_tuple(table_id_obj->id, uint64_t(0)));
+
+            // Serialize epoch data
+            std::vector<char> data = fc::raw::pack(new_lower_epoch);
+
+            if (kv_obj) {
+                // Update existing row
+                db.modify(*kv_obj, [&](auto& obj) {
+                    obj.value.assign(data.data(), data.size());
+                });
+            } else {
+                // Create new row
+                db.create<chain::key_value_object>([&](auto& obj) {
+                    obj.t_id = table_id_obj->id;
+                    obj.primary_key = 0;
+                    obj.payer = chain::config::system_account_name;
+                    obj.value.assign(data.data(), data.size());
+                });
+            }
+        } catch (const std::exception& e) {
+            elog("Failed to write epoch to database: ${e}", ("e", e.what()));
+        } catch (...) {
+            elog("Failed to write epoch to database: unknown exception");
         }
 
         std::lock_guard<std::mutex> lock(epoch_mutex);
@@ -807,8 +898,7 @@ void cross_plugin::plugin_initialize(const variables_map& options)
         EOS_ASSERT(my->chain_plug, chain::missing_chain_plugin_exception, "");
         my->_options = &options;
         auto& chain = my->chain_plug->chain();
-        chainbase::database& db = const_cast<chainbase::database&>(chain.db());
-        db.add_index<ethash_block_number_index>();
+        // Remove chainbase index as we'll use contract table for epoch storage
         my->register_plugin_map();
 
         my->_producer = string_to_name(options.at("signature-producer").as<std::string>());
@@ -851,6 +941,10 @@ void cross_plugin::plugin_initialize(const variables_map& options)
                 }
             }
         }
+        // Register accepted_block_connection event
+        my->accepted_block_connection.emplace(chain.accepted_block.connect([&](const chain::block_state_ptr& bs) {
+            my->on_accepted_block(bs);
+        }));
     }
     FC_LOG_AND_RETHROW()
 }
@@ -890,6 +984,7 @@ void cross_plugin::plugin_shutdown()
     try {
         ilog("exit shutdown");
         my->_timer.cancel();
+        my->accepted_block_connection.reset();
     } catch (fc::exception& e) {
         edump((e.to_detail_string()));
     }

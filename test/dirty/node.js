@@ -31,10 +31,9 @@ fibos.load("producer", {
     'max-transaction-time': 3000
 });
 
+snapshot(chain_config);
 fibos.load("chain", chain_config);
 fibos.load("chain_api");
-
-snapshot(chain_config);
 
 fibos.on("close", (code) => {
     process.exit(code);
