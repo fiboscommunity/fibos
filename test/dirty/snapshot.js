@@ -128,6 +128,7 @@ module.exports = function (config) {
                     const latestSnapshot = fileStats[0];
                     config.snapshot = latestSnapshot.path;
                     console.notice("using latest snapshot:", latestSnapshot.name);
+                    delete config['genesis-json'];
                 } else {
                     console.error("no snapshot files found in:", snapshotPath);
                 }
@@ -138,7 +139,6 @@ module.exports = function (config) {
             console.error("failed to find latest snapshot:", e.message);
         }
 
-        delete config['genesis-json'];
         return true;
     }
 
