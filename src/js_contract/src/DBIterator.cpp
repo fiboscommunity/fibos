@@ -188,9 +188,28 @@ result_t DBIterator::update(exlib::string payer)
     return 0;
 }
 
-result_t DBIterator::get_data(v8::Local<v8::Value>& retVal)
+result_t DBIterator::get_data(v8::Local<v8::Object>& retVal)
 {
-    retVal = GetPrivate("data");
+    retVal = GetPrivate("data").As<v8::Object>();
     return 0;
 }
+
+result_t DBIterator::set_data(v8::Local<v8::Object> newVal)
+{
+    v8::Local<v8::Object> data = GetPrivate("data").As<v8::Object>();
+    if (data->IsUndefined())
+        return Runtime::setError("data is undefined");
+
+    v8::Local<v8::Context> ctx = js_module_interface::g_isolate->context();
+    v8::Local<v8::Array> props = newVal->GetOwnPropertyNames(ctx).ToLocalChecked();
+
+    for (uint32_t i = 0; i < props->Length(); i++) {
+        v8::Local<v8::Value> key = props->Get(ctx, i).FromMaybe(v8::Local<v8::Value>());
+        v8::Local<v8::Value> value = newVal->Get(ctx, key).FromMaybe(v8::Local<v8::Value>());
+        data->Set(ctx, key, value);
+    }
+
+    return 0;
+}
+
 }

@@ -23,7 +23,8 @@ public:
     virtual result_t previous(obj_ptr<DBIterator_base>& retVal) = 0;
     virtual result_t remove() = 0;
     virtual result_t update(exlib::string payer) = 0;
-    virtual result_t get_data(v8::Local<v8::Value>& retVal) = 0;
+    virtual result_t get_data(v8::Local<v8::Object>& retVal) = 0;
+    virtual result_t set_data(v8::Local<v8::Object> newVal) = 0;
 
 public:
     static void s__new(const v8::FunctionCallbackInfo<v8::Value>& args)
@@ -46,6 +47,7 @@ public:
     static void s_remove(const v8::FunctionCallbackInfo<v8::Value>& args);
     static void s_update(const v8::FunctionCallbackInfo<v8::Value>& args);
     static void s_get_data(const v8::FunctionCallbackInfo<v8::Value>& args);
+    static void s_set_data(const v8::FunctionCallbackInfo<v8::Value>& args);
 };
 }
 
@@ -62,7 +64,7 @@ inline ClassInfo& DBIterator_base::class_info()
     };
 
     static ClassData::ClassProperty s_property[] = {
-        { "data", s_get_data, block_set, false }
+        { "data", s_get_data, s_set_data, false }
     };
 
     static ClassData s_cd = {
@@ -160,7 +162,7 @@ inline void DBIterator_base::s_update(const v8::FunctionCallbackInfo<v8::Value>&
 
 inline void DBIterator_base::s_get_data(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-    v8::Local<v8::Value> vr;
+    v8::Local<v8::Object> vr;
 
     METHOD_INSTANCE(DBIterator_base);
     METHOD_ENTER();
@@ -171,5 +173,19 @@ inline void DBIterator_base::s_get_data(const v8::FunctionCallbackInfo<v8::Value
     hr = pInst->get_data(vr);
 
     METHOD_RETURN();
+}
+
+inline void DBIterator_base::s_set_data(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    METHOD_INSTANCE(DBIterator_base);
+    METHOD_ENTER();
+
+    METHOD_OVER(1, 1);
+
+    ARG(v8::Local<v8::Object>, 0);
+
+    hr = pInst->set_data(v0);
+
+    METHOD_VOID();
 }
 }

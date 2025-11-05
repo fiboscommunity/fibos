@@ -25,7 +25,9 @@ public:
     virtual result_t previous(obj_ptr<DBIterator_base>& retVal);
     virtual result_t remove();
     virtual result_t update(exlib::string payer);
-    virtual result_t get_data(v8::Local<v8::Value>& retVal);
+    virtual result_t get_data(v8::Local<v8::Object>& retVal);
+    virtual result_t set_data(v8::Local<v8::Object> newVal);
+
 
 public:
     result_t load(int32_t itr, uint64_t id, int32_t idx_itr, Index* idx);
